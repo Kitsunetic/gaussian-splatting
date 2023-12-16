@@ -3,7 +3,7 @@
 # GRAPHDECO research group, https://team.inria.fr/graphdeco
 # All rights reserved.
 #
-# This software is free for non-commercial, research and evaluation use 
+# This software is free for non-commercial, research and evaluation use
 # under the terms of the LICENSE.md file.
 #
 # For inquiries contact  george.drettakis@inria.fr
@@ -31,7 +31,7 @@ all_scenes.extend(tanks_and_temples_scenes)
 all_scenes.extend(deep_blending_scenes)
 
 if not args.skip_training or not args.skip_rendering:
-    parser.add_argument('--mipnerf360', "-m360", required=True, type=str)
+    parser.add_argument("--mipnerf360", "-m360", required=True, type=str)
     parser.add_argument("--tanksandtemples", "-tat", required=True, type=str)
     parser.add_argument("--deepblending", "-db", required=True, type=str)
     args = parser.parse_args()
@@ -70,6 +70,6 @@ if not args.skip_rendering:
 if not args.skip_metrics:
     scenes_string = ""
     for scene in all_scenes:
-        scenes_string += "\"" + args.output_path + "/" + scene + "\" "
+        scenes_string += '"' + args.output_path + "/" + scene + '" '
 
     os.system("python metrics.py -m " + scenes_string)
