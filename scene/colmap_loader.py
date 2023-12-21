@@ -9,9 +9,10 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-import numpy as np
 import collections
 import struct
+
+import numpy as np
 
 CameraModel = collections.namedtuple("CameraModel", ["model_id", "model_name", "num_params"])
 Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
@@ -162,6 +163,15 @@ def read_points3D_binary(path_to_model_file):
     return xyzs, rgbs, errors
 
 
+def read_points3D_npy(path_to_model_file):
+    data = np.load(path_to_model_file)
+    xyz = data["xyz"].astype(np.float32)
+    rgb = data["rgb"].astype(np.float32)
+    xyz = np.copy(xyz)
+    rgb = np.copy(rgb)
+    return xyz, rgb
+
+
 def read_intrinsics_text(path):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
@@ -182,6 +192,38 @@ def read_intrinsics_text(path):
                 height = int(elems[3])
                 params = np.array(tuple(map(float, elems[4:])))
                 cameras[camera_id] = Camera(id=camera_id, model=model, width=width, height=height, params=params)
+    return cameras
+
+
+def read_intrinsics_binary(path_to_model_file):
+    """
+    see: src/base/reconstruction.cc
+        void Reconstruction::WriteCamerasBinary(const std::string& path)
+        void Reconstruction::ReadCamerasBinary(const std::string& path)
+    """
+    cameras = {}
+    with open(path_to_model_file, "rb") as fid:
+        num_cameras = read_next_bytes(fid, 8, "Q")[0]
+        for _ in range(num_cameras):
+            camera_properties = read_next_bytes(fid, num_bytes=24, format_char_sequence="iiQQ")
+            camera_id = camera_properties[0]
+            model_id = camera_properties[1]
+            model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
+            width = camera_properties[2]
+            height = camera_properties[3]
+            num_params = CAMERA_MODEL_IDS[model_id].num_params
+            params = read_next_bytes(fid, num_bytes=8 * num_params, format_char_sequence="d" * num_params)
+            cameras[camera_id] = Camera(id=camera_id, model=model_name, width=width, height=height, params=np.array(params))
+        assert len(cameras) == num_cameras
+    return cameras
+
+
+def read_intrinsics_npy(path_to_model_file):
+    cameras = {}
+    data = np.load(path_to_model_file)
+    keys = ["id", "model", "width", "height", "params"]
+    for i, camera_id in enumerate(data["id"]):
+        cameras[camera_id] = Camera(**{key: data[key][i] for key in keys})
     return cameras
 
 
@@ -215,29 +257,6 @@ def read_extrinsics_binary(path_to_model_file):
     return images
 
 
-def read_intrinsics_binary(path_to_model_file):
-    """
-    see: src/base/reconstruction.cc
-        void Reconstruction::WriteCamerasBinary(const std::string& path)
-        void Reconstruction::ReadCamerasBinary(const std::string& path)
-    """
-    cameras = {}
-    with open(path_to_model_file, "rb") as fid:
-        num_cameras = read_next_bytes(fid, 8, "Q")[0]
-        for _ in range(num_cameras):
-            camera_properties = read_next_bytes(fid, num_bytes=24, format_char_sequence="iiQQ")
-            camera_id = camera_properties[0]
-            model_id = camera_properties[1]
-            model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
-            width = camera_properties[2]
-            height = camera_properties[3]
-            num_params = CAMERA_MODEL_IDS[model_id].num_params
-            params = read_next_bytes(fid, num_bytes=8 * num_params, format_char_sequence="d" * num_params)
-            cameras[camera_id] = Camera(id=camera_id, model=model_name, width=width, height=height, params=np.array(params))
-        assert len(cameras) == num_cameras
-    return cameras
-
-
 def read_extrinsics_text(path):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
@@ -262,6 +281,15 @@ def read_extrinsics_text(path):
                 images[image_id] = Image(
                     id=image_id, qvec=qvec, tvec=tvec, camera_id=camera_id, name=image_name, xys=xys, point3D_ids=point3D_ids
                 )
+    return images
+
+
+def read_extrinsics_npy(path_to_model_file):
+    images = {}
+    data = np.load(path_to_model_file)
+    keys = ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"]
+    for i, image_id in enumerate(data["id"]):
+        images[image_id] = Image(**{key: data[key][i] for key in keys})
     return images
 
 

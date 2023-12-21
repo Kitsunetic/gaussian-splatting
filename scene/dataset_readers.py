@@ -9,26 +9,32 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+import json
 import os
 import sys
-from PIL import Image
+from pathlib import Path
 from typing import NamedTuple
+from pdb import set_trace
+
+import numpy as np
+from PIL import Image
+from plyfile import PlyData, PlyElement
+
 from scene.colmap_loader import (
-    read_extrinsics_text,
-    read_intrinsics_text,
     qvec2rotmat,
     read_extrinsics_binary,
+    read_extrinsics_npy,
+    read_extrinsics_text,
     read_intrinsics_binary,
+    read_intrinsics_npy,
+    read_intrinsics_text,
     read_points3D_binary,
+    read_points3D_npy,
     read_points3D_text,
 )
-from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
-import numpy as np
-import json
-from pathlib import Path
-from plyfile import PlyData, PlyElement
-from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
+from utils.graphics_utils import focal2fov, fov2focal, getWorld2View2
+from utils.sh_utils import SH2RGB
 
 
 class CameraInfo(NamedTuple):
@@ -138,6 +144,10 @@ def fetchPly(path):
 
 
 def storePly(path, xyz, rgb):
+    # print(xyz.dtype, rgb.dtype)
+    # print(xyz.min(), xyz.max())
+    # print(rgb.min(), rgb.max())
+    # rgb = rgb.astype(np.uint8)
     # Define the dtype for the structured array
     dtype = [
         ("x", "f4"),
@@ -156,24 +166,35 @@ def storePly(path, xyz, rgb):
     elements = np.empty(xyz.shape[0], dtype=dtype)
     attributes = np.concatenate((xyz, normals, rgb), axis=1)
     elements[:] = list(map(tuple, attributes))
+    print(elements)
 
     # Create the PlyData object and write to file
     vertex_element = PlyElement.describe(elements, "vertex")
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
+    np.savez_compressed("test.npz", xyz=xyz, rgb=rgb)
+
 
 def readColmapSceneInfo(path, images, eval, llffhold=8):
-    try:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
-        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
-    except:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
-        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+    cameras_extrinsic_file1 = os.path.join(path, "sparse/0", "images.bin")
+    cameras_intrinsic_file1 = os.path.join(path, "sparse/0", "cameras.bin")
+    cameras_extrinsic_file2 = os.path.join(path, "sparse/0", "images.txt")
+    cameras_intrinsic_file2 = os.path.join(path, "sparse/0", "cameras.txt")
+    cameras_extrinsic_file3 = os.path.join(path, "sparse/0", "images.npz")
+    cameras_intrinsic_file3 = os.path.join(path, "sparse/0", "cameras.npz")
+
+    if os.path.exists(cameras_extrinsic_file1) and os.path.exists(cameras_intrinsic_file1):
+        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file1)
+        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file1)
+    elif os.path.exists(cameras_extrinsic_file2) and os.path.exists(cameras_intrinsic_file2):
+        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file2)
+        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file2)
+    elif os.path.exists(cameras_extrinsic_file3) and os.path.exists(cameras_intrinsic_file3):
+        cam_extrinsics = read_extrinsics_npy(cameras_extrinsic_file3)
+        cam_intrinsics = read_intrinsics_npy(cameras_intrinsic_file3)
+    else:
+        raise NotImplementedError
 
     reading_dir = "images" if images == None else images
     cam_infos_unsorted = readColmapCameras(
@@ -193,12 +214,17 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     ply_path = os.path.join(path, "sparse/0/points3D.ply")
     bin_path = os.path.join(path, "sparse/0/points3D.bin")
     txt_path = os.path.join(path, "sparse/0/points3D.txt")
+    npz_path = os.path.join(path, "sparse/0/points3D.npz")
     if not os.path.exists(ply_path):
         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
-        try:
+        if os.path.exists(bin_path):
             xyz, rgb, _ = read_points3D_binary(bin_path)
-        except:
+        elif os.path.exists(txt_path):
             xyz, rgb, _ = read_points3D_text(txt_path)
+        elif os.path.exists(npz_path):
+            xyz, rgb = read_points3D_npy(npz_path)
+        else:
+            raise NotImplementedError
         storePly(ply_path, xyz, rgb)
     try:
         pcd = fetchPly(ply_path)
